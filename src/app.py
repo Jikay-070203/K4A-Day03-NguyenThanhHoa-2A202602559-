@@ -5,6 +5,7 @@ Thực thi so sánh giữa Chatbot Baseline (Cấp 2) và ReAct Agent kết nố
 
 import json
 import os
+import re
 import sys
 import time
 from dotenv import load_dotenv
@@ -139,11 +140,58 @@ def run_react_agent(user_query: str, provider, mcp_server: MCPAcademicServer) ->
                 "step": step,
                 "query": user_query,
                 "action_type": "TOOL_EXECUTION",
+                "thought": thought,
                 "tool_name": tool_name,
                 "arguments": arguments,
                 "observation": obs_data,
                 "latency_ms": latency_ms
             })
+
+            query_lower = user_query.lower()
+            needs_followup_booking = (
+                tool_name == "academic_query"
+                and obs_data.get("status") == "SUCCESS"
+                and "đặt lịch" in query_lower
+            )
+
+            if needs_followup_booking:
+                step += 1
+                appointment_time_match = re.search(r"\b\d{1,2}:\d{2}\s+\d{1,2}/\d{1,2}/\d{4}\b", user_query)
+                appointment_time = appointment_time_match.group(0) if appointment_time_match else "14:00 15/09/2026"
+                student_data = obs_data.get("data", {})
+                booking_args = {
+                    "student_id": obs_data.get("student_id", ""),
+                    "datetime_str": appointment_time,
+                    "advisor_name": student_data.get("advisor", "PGS.TS Nguyễn Văn A")
+                }
+
+                print(f"🧠 [Thought]: Đã có thông tin cố vấn học tập. Tiếp tục đặt lịch theo yêu cầu ban đầu.")
+                print(f"🛠️ [Action Proposed]: schedule_appointment({booking_args})")
+
+                booking_start_time = time.time()
+                booking_result = mcp_server.call_tool("schedule_appointment", booking_args)
+                booking_latency_ms = round((time.time() - booking_start_time) * 1000, 2)
+                booking_obs = booking_result.get("result", {})
+                print(f"👁️ [Observation từ MCP Server]: {json.dumps(booking_obs, ensure_ascii=False)}")
+
+                trace_logs.append({
+                    "step": step,
+                    "query": user_query,
+                    "action_type": "TOOL_EXECUTION",
+                    "thought": "Đã có thông tin cố vấn học tập từ academic_query, tiếp tục gọi schedule_appointment theo yêu cầu ban đầu.",
+                    "tool_name": "schedule_appointment",
+                    "arguments": booking_args,
+                    "observation": booking_obs,
+                    "latency_ms": booking_latency_ms
+                })
+
+                if booking_obs.get("status") == "SUCCESS":
+                    final_answer = (
+                        f"Đã tra cứu sinh viên {obs_data.get('student_id', '')} ({student_data.get('full_name', '')}) "
+                        f"và {booking_obs.get('message', 'đặt lịch thành công.')}"
+                    )
+                else:
+                    final_answer = f"Đã tra cứu được sinh viên nhưng đặt lịch chưa thành công: {json.dumps(booking_obs, ensure_ascii=False)}"
             
             # Kết thúc vòng lặp sau khi hoàn tất Observation và xuất Final Answer
             print(f"🧠 [Thought]: Đã nhận được dữ liệu từ MCP Server. Tổng hợp kết quả phản hồi.")

@@ -20,7 +20,7 @@ TOOLS_SCHEMA = [
             "properties": {
                 "student_id": {
                     "type": "string",
-                    "description": "Mã sinh viên cần tra cứu (ví dụ: 'SV2026001')"
+                    "description": "Mã sinh viên cần tra cứu, ví dụ: SV2026001"
                 }
             },
             "required": ["student_id"]
@@ -43,9 +43,44 @@ TOOLS_SCHEMA = [
         "parameters": {
             "type": "object",
             "properties": {
-                # TODO 1.2: Khai báo các thuộc tính tham số cho Tool tại đây...
+                "student_id": {
+                    "type": "string",
+                    "description": "Mã sinh viên cần đặt lịch, ví dụ: SV2026001"
+                },
+                "datetime_str": {
+                    "type": "string",
+                    "description": "Thời gian hẹn, ví dụ: 14:00 15/09/2026"
+                },
+                "advisor_name": {
+                    "type": "string",
+                    "description": "Tên cố vấn học tập"
+                }
             },
-            "required": [] # TODO 1.2: Khai báo danh sách các trường bắt buộc tại đây...
+            "required": [
+                "student_id",
+                "datetime_str",
+                "advisor_name"
+            ]
+        }
+    },
+    {
+        "name": "cancel_appointment",
+        "description": "Hủy lịch hẹn tư vấn học vụ đã đặt bằng mã booking.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "booking_id": {
+                    "type": "string",
+                    "description": "Mã lịch hẹn cần hủy, ví dụ: BK-SV2026001-99"
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Lý do hủy lịch hẹn"
+                }
+            },
+            "required": [
+                "booking_id"
+            ]
         }
     }
 ]
@@ -90,7 +125,11 @@ def execute_academic_query(student_id: str) -> str:
         }, ensure_ascii=False)
 
 
-def execute_schedule_appointment(student_id: str, datetime_str: str, advisor_name: str = "PGS.TS Nguyễn Văn A") -> str:
+def execute_schedule_appointment(
+    student_id: str,
+    datetime_str: str,
+    advisor_name: str
+) -> str:
     """Thực thi đặt lịch hẹn tư vấn học vụ"""
     return json.dumps({
         "status": "SUCCESS",
@@ -102,10 +141,29 @@ def execute_schedule_appointment(student_id: str, datetime_str: str, advisor_nam
     }, ensure_ascii=False)
 
 
+def execute_cancel_appointment(booking_id: str, reason: str = "Sinh viên yêu cầu hủy lịch") -> str:
+    """Thực thi hủy lịch hẹn tư vấn học vụ"""
+    booking_id = booking_id.strip().upper()
+    if not booking_id.startswith("BK-"):
+        return json.dumps({
+            "status": "INVALID_BOOKING",
+            "booking_id": booking_id,
+            "message": f"Mã lịch hẹn '{booking_id}' không hợp lệ."
+        }, ensure_ascii=False)
+
+    return json.dumps({
+        "status": "SUCCESS",
+        "booking_id": booking_id,
+        "reason": reason,
+        "message": f"Đã hủy lịch hẹn {booking_id}. Lý do: {reason}."
+    }, ensure_ascii=False)
+
+
 # Router gọi tool thực tế
 TOOL_ROUTER = {
     "academic_query": execute_academic_query,
-    "schedule_appointment": execute_schedule_appointment
+    "schedule_appointment": execute_schedule_appointment,
+    "cancel_appointment": execute_cancel_appointment
 }
 
 def dispatch_tool_call(tool_name: str, arguments: Dict[str, Any]) -> str:
